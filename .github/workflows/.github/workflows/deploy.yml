@@ -1,30 +1,31 @@
-name: Crypto Renko Bot Monthly Report
+name: Crypto Bot RENKO  Monthly Report
 
 on:
-schedule:
-  - cron: '0 0 1 * *'  # يوم 1 من كل شهر في منتصف الليل UTC
-workflow_dispatch:  # هذا السطر مهم للتشغيل اليدوي!
+  schedule:
+    # يعمل في اليوم الأول من كل شهر الساعة 9 صباحاً
+    - cron: '0 6 1 * *'
+  workflow_dispatch: # للتشغيل اليدوي للاختبار
 
 jobs:
-send-crypto-report:
-  runs-on: ubuntu-latest
-  
-  steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
+  run-bot:
+    runs-on: ubuntu-latest
     
-  - name: Set up Python
-    uses: actions/setup-python@v4
-    with:
-      python-version: '3.11'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
       
-  - name: Install dependencies
-    run: |
-      python -m pip install --upgrade pip
-      pip install requests
-      
-  - name: Run crypto bot
-    env:
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-    run: python main.py
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests python-telegram-bot
+        
+    - name: Run crypto bot
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: python main.py
