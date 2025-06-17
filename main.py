@@ -71,7 +71,7 @@ async def capture_tradingview_chart(symbol_info, driver):
     
     try:
         # بناء رابط TradingView مع إعدادات Renko
-        url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}&interval=1M&style=2"
+        url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}&interval=1M&style=12"
         
         logger.info(f"🌐 الذهاب إلى: {url}")
         driver.get(url)
