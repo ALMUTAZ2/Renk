@@ -1,0 +1,45 @@
+name: Crypto Charts Monthly Scheduler
+
+on:
+  schedule:
+    # كل يوم 1 من الشهر الساعة 3:00 صباحاً UTC (6:00 صباحاً السعودية)
+    - cron: '0 3 1 * *'
+  workflow_dispatch: # للتشغيل اليدوي للاختبار
+
+jobs:
+  send-crypto-charts:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y firefox-esr xvfb
+        
+    - name: Install geckodriver
+      run: |
+        wget -q https://github.com/mozilla/geckodriver/releases/download/v0.33.0/geckodriver-v0.33.0-linux64.tar.gz
+        tar -xzf geckodriver-v0.33.0-linux64.tar.gz
+        sudo mv geckodriver /usr/local/bin/
+        chmod +x /usr/local/bin/geckodriver
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run crypto charts bot
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        DISPLAY: :99
+      run: |
+        xvfb-run -a python main.py
