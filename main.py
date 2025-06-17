@@ -1,211 +1,219 @@
-import requests
-import os
-from datetime import datetime
+import asyncio
 import time
+import os
+import sys
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from aiogram import Bot
+from aiogram.types import FSInputFile
+import logging
 
-def get_crypto_prices():
-    """جلب أسعار العملات من APIs بديلة"""
-    prices = {}
-    
-    # قائمة APIs بديلة
-    apis = [
-        {
-            'name': 'CoinGecko',
-            'url': 'https://api.coingecko.com/api/v3/simple/price',
-            'params': {
-                'ids': 'bitcoin,ethereum,binancecoin,solana,ripple',
-                'vs_currencies': 'usd'
-            }
-        },
-        {
-            'name': 'CryptoCompare',
-            'url': 'https://min-api.cryptocompare.com/data/pricemulti',
-            'params': {
-                'fsyms': 'BTC,ETH,BNB,SOL,XRP',
-                'tsyms': 'USD'
-            }
-        }
-    ]
-    
-    # جرب CoinGecko أولاً
-    try:
-        print("🔍 محاولة CoinGecko...")
-        response = requests.get(
-            apis[0]['url'], 
-            params=apis[0]['params'], 
-            timeout=15
-        )
-        
-        print(f"📡 CoinGecko Status: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            print(f"📊 CoinGecko Data: {data}")
-            
-            # تحويل البيانات
-            coin_mapping = {
-                'bitcoin': 'BTC',
-                'ethereum': 'ETH', 
-                'binancecoin': 'BNB',
-                'solana': 'SOL',
-                'ripple': 'XRP'
-            }
-            
-            for coin_id, symbol in coin_mapping.items():
-                if coin_id in data and 'usd' in data[coin_id]:
-                    price = data[coin_id]['usd']
-                    prices[symbol] = f"${price:,.2f}"
-                    print(f"✅ {symbol}: {prices[symbol]}")
-            
-            if prices:
-                return prices
-                
-    except Exception as e:
-        print(f"❌ خطأ CoinGecko: {e}")
-    
-    # جرب CryptoCompare كبديل
-    try:
-        print("🔍 محاولة CryptoCompare...")
-        response = requests.get(
-            apis[1]['url'], 
-            params=apis[1]['params'], 
-            timeout=15
-        )
-        
-        print(f"📡 CryptoCompare Status: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            print(f"📊 CryptoCompare Data: {data}")
-            
-            for symbol in ['BTC', 'ETH', 'BNB', 'SOL', 'XRP']:
-                if symbol in data and 'USD' in data[symbol]:
-                    price = data[symbol]['USD']
-                    prices[symbol] = f"${price:,.2f}"
-                    print(f"✅ {symbol}: {prices[symbol]}")
-            
-            if prices:
-                return prices
-                
-    except Exception as e:
-        print(f"❌ خطأ CryptoCompare: {e}")
-    
-    # إذا فشلت كل APIs، استخدم أسعار وهمية للاختبار
-    print("⚠️ استخدام أسعار وهمية للاختبار...")
-    return {
-        'BTC': '$95,000.00',
-        'ETH': '$3,500.00', 
-        'BNB': '$650.00',
-        'SOL': '$200.00',
-        'XRP': '$2.50'
-    }
+# إعداد التسجيل
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-def send_telegram_message(message):
-    """إرسال رسالة إلى تليجرام"""
-    bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
-    chat_id = os.getenv('TELEGRAM_CHAT_ID')
+# إعدادات تليجرام (مضمنة مباشرة)
+TELEGRAM_BOT_TOKEN = "7762932301:AAHkbmxRKhvjeKV9uJNfh8t382cO0Ty7i2M"
+TELEGRAM_CHAT_ID = "521974594"
+
+# التحقق من وجود البيانات
+if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+    logger.error("❌ بيانات تليجرام غير مضبوطة!")
+    sys.exit(1)
+
+# إعداد البوت
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
+
+def setup_chrome_driver():
+    """إعداد Chrome Driver لـ GitHub Actions"""
+    logger.info("🔧 إعداد Chrome Driver...")
     
-    if not bot_token or not chat_id:
-        print("❌ إعدادات تليجرام مفقودة")
-        return False
+    chrome_options = Options()
     
-    # تنظيف Bot Token (إزالة المسافات والأحرف الغريبة)
-    bot_token = bot_token.strip()
-    chat_id = str(chat_id).strip()
+    # إعدادات ضرورية لـ GitHub Actions
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-plugins")
+    chrome_options.add_argument("--disable-images")
+    chrome_options.add_argument("--disable-javascript")
+    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
     
-    print(f"🔑 Bot Token Length: {len(bot_token)}")
-    print(f"🔑 Chat ID: {chat_id}")
-    
-    # اختبار البوت أولاً
-    test_url = f"https://api.telegram.org/bot{bot_token}/getMe"
     try:
-        test_response = requests.get(test_url, timeout=10)
-        print(f"🧪 Test Bot Status: {test_response.status_code}")
-        print(f"🧪 Test Bot Response: {test_response.text}")
+        driver = webdriver.Chrome(options=chrome_options)
+        logger.info("✅ تم إعداد Chrome Driver بنجاح")
+        return driver
+    except Exception as e:
+        logger.error(f"❌ خطأ في إعداد Chrome: {e}")
+        sys.exit(1)
+
+# العملات المطلوبة
+SYMBOLS = [
+    {"symbol": "BTCUSDT", "name": "Bitcoin"},
+    {"symbol": "ETHUSDT", "name": "Ethereum"},
+    {"symbol": "BNBUSDT", "name": "BNB"},
+    {"symbol": "SOLUSDT", "name": "Solana"},
+    {"symbol": "XRPUSDT", "name": "XRP"}
+]
+
+async def capture_tradingview_chart(symbol_info, driver):
+    """التقاط شارت من TradingView"""
+    symbol = symbol_info["symbol"]
+    name = symbol_info["name"]
+    
+    logger.info(f"📈 معالجة {name} ({symbol})...")
+    
+    try:
+        # بناء رابط TradingView مع إعدادات Renko
+        url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}&interval=1D&style=8"
         
-        if test_response.status_code != 200:
-            print("❌ Bot Token غير صحيح!")
+        logger.info(f"🌐 الذهاب إلى: {url}")
+        driver.get(url)
+        
+        # انتظار تحميل الصفحة
+        logger.info("⏳ انتظار تحميل الشارت...")
+        time.sleep(15)  # انتظار أطول للتأكد من التحميل
+        
+        # أخذ لقطة شاشة
+        file_name = f"{symbol}_chart.png"
+        
+        try:
+            # محاولة العثور على منطقة الشارت
+            wait = WebDriverWait(driver, 10)
+            chart_area = wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, ".layout__area--center"))
+            )
+            
+            # أخذ لقطة شاشة للشارت فقط
+            chart_area.screenshot(file_name)
+            logger.info(f"📸 تم التقاط شارت {symbol}")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ فشل في العثور على الشارت، أخذ لقطة شاشة كاملة: {e}")
+            driver.save_screenshot(file_name)
+        
+        # التحقق من وجود الملف
+        if os.path.exists(file_name) and os.path.getsize(file_name) > 1000:
+            # إرسال الصورة
+            photo = FSInputFile(file_name)
+            
+            # إرسال رسالة نصية أولاً
+            await bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=f"📊 **شارت {name} ({symbol})**\n🔗 TradingView - Renko Chart\n📅 {time.strftime('%Y-%m-%d %H:%M UTC')}",
+                parse_mode="Markdown"
+            )
+            
+            # إرسال الصورة
+            await bot.send_photo(
+                chat_id=TELEGRAM_CHAT_ID,
+                photo=photo,
+                caption=f"📈 {name} - Renko Chart"
+            )
+            
+            # حذف الملف
+            os.remove(file_name)
+            logger.info(f"✅ تم إرسال شارت {symbol} بنجاح")
+            return True
+            
+        else:
+            logger.error(f"❌ فشل في إنشاء ملف صحيح لـ {symbol}")
             return False
             
     except Exception as e:
-        print(f"❌ خطأ في اختبار البوت: {e}")
+        logger.error(f"❌ خطأ في معالجة {symbol}: {e}")
         return False
+
+async def send_summary_message(successful_charts):
+    """إرسال رسالة ملخص"""
+    try:
+        total_symbols = len(SYMBOLS)
+        success_count = len(successful_charts)
+        
+        summary = f"""
+🤖 **تقرير بوت الشارتات**
+📅 التاريخ: {time.strftime('%Y-%m-%d %H:%M UTC')}
+
+📊 **النتائج:**
+✅ نجح: {success_count}/{total_symbols}
+❌ فشل: {total_symbols - success_count}/{total_symbols}
+
+✅ **الشارتات المرسلة:**
+{chr(10).join([f"• {info['name']}" for info in successful_charts])}
+
+🔄 **التشغيل التالي:** خلال 6 ساعات
+🤖 **المصدر:** GitHub Actions Bot
+        """.strip()
+        
+        await bot.send_message(
+            chat_id=TELEGRAM_CHAT_ID,
+            text=summary,
+            parse_mode="Markdown"
+        )
+        
+        logger.info("📋 تم إرسال ملخص التقرير")
+        
+    except Exception as e:
+        logger.error(f"❌ خطأ في إرسال الملخص: {e}")
+
+async def main():
+    """الدالة الرئيسية"""
+    logger.info("🚀 بدء تشغيل بوت الشارتات...")
     
-    # إرسال الرسالة
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    # إرسال رسالة بداية
+    try:
+        await bot.send_message(
+            chat_id=TELEGRAM_CHAT_ID,
+            text="🚀 **بدء تشغيل بوت الشارتات**\n⏳ جاري جلب الشارتات من TradingView...",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logger.error(f"❌ خطأ في إرسال رسالة البداية: {e}")
     
-    payload = {
-        'chat_id': chat_id,
-        'text': message,
-        'parse_mode': 'HTML'
-    }
+    # إعداد Driver
+    driver = setup_chrome_driver()
+    successful_charts = []
     
     try:
-        response = requests.post(url, data=payload, timeout=30)
-        
-        print(f"📡 Send Status: {response.status_code}")
-        print(f"📡 Send Response: {response.text}")
-        
-        if response.status_code == 200:
-            result = response.json()
-            if result.get('ok'):
-                print("✅ تم إرسال الرسالة بنجاح!")
-                return True
-        
-        print("❌ فشل في إرسال الرسالة")
-        return False
+        # معالجة كل عملة
+        for i, symbol_info in enumerate(SYMBOLS):
+            success = await capture_tradingview_chart(symbol_info, driver)
             
+            if success:
+                successful_charts.append(symbol_info)
+            
+            # انتظار بين العملات لتجنب الحظر
+            if i < len(SYMBOLS) - 1:
+                logger.info("⏳ انتظار بين العملات...")
+                time.sleep(10)
+        
+        # إرسال ملخص النتائج
+        await send_summary_message(successful_charts)
+                
     except Exception as e:
-        print(f"❌ خطأ في إرسال الرسالة: {e}")
-        return False
-
-def main():
-    """الدالة الرئيسية"""
-    print("🚀 بدء تشغيل بوت العملات المحدث...")
-    print("=" * 60)
-    
-    # جلب أسعار العملات
-    print("📊 جلب أسعار العملات من APIs بديلة...")
-    prices = get_crypto_prices()
-    print("=" * 60)
-    
-    # إنشاء التقرير
-    current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
-    
-    report = f"""
-🚀 <b>تقرير العملات الرقمية الشهري</b>
-📅 التاريخ: {current_date}
-
-💰 <b>أسعار العملات الحالية:</b>
-
-🔸 <b>Bitcoin (BTC):</b> {prices.get('BTC', 'غير متوفر')}
-🔸 <b>Ethereum (ETH):</b> {prices.get('ETH', 'غير متوفر')}
-🔸 <b>Binance Coin (BNB):</b> {prices.get('BNB', 'غير متوفر')}
-🔸 <b>Solana (SOL):</b> {prices.get('SOL', 'غير متوفر')}
-🔸 <b>XRP:</b> {prices.get('XRP', 'غير متوفر')}
-
-📈 <b>ملاحظة:</b> تقرير آلي شهري
-🤖 <b>المصدر:</b> بوت العملات الرقمية
-
----
-💡 <i>تم إنشاء هذا التقرير تلقائياً</i>
-    """.strip()
-    
-    print("📝 التقرير النهائي:")
-    print(report)
-    print("=" * 60)
-    
-    # إرسال التقرير
-    print("📤 إرسال التقرير إلى تليجرام...")
-    success = send_telegram_message(report)
-    
-    print("=" * 60)
-    if success:
-        print("🎉 تم إنجاز المهمة بنجاح!")
-    else:
-        print("⚠️ تم إنجاز المهمة مع مشاكل في الإرسال")
-    
-    print("🏁 انتهى التشغيل")
+        logger.error(f"❌ خطأ عام: {e}")
+        
+        # إرسال رسالة خطأ
+        try:
+            await bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=f"❌ **خطأ في البوت**\n```{str(e)}```",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
+        
+    finally:
+        # إغلاق Driver والبوت
+        driver.quit()
+        await bot.session.close()
+        logger.info("🏁 انتهى التشغيل")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
