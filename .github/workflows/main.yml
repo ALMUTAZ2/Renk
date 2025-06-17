@@ -39,28 +39,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: 🌐 Install Chrome
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y google-chrome-stable
-    
-    - name: 🚗 Install ChromeDriver
-      run: |
-        # الحصول على إصدار Chrome
-        CHROME_VERSION=$(google-chrome --version | cut -d " " -f3 | cut -d "." -f1-3)
-        echo "Chrome version: $CHROME_VERSION"
-        
-        # تحميل ChromeDriver المناسب
-        CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_VERSION")
-        echo "ChromeDriver version: $CHROMEDRIVER_VERSION"
-        
-        # تحميل وتثبيت ChromeDriver
-        wget -O /tmp/chromedriver.zip "https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip"
-        sudo unzip /tmp/chromedriver.zip -d /usr/local/bin/
-        sudo chmod +x /usr/local/bin/chromedriver
-        
-        # التحقق من التثبيت
-        chromedriver --version
+    - name: 🌐 Setup Chrome and ChromeDriver
+      uses: browser-actions/setup-chrome@latest
+      with:
+        chrome-version: stable
     
     - name: 🤖 Run Crypto Charts Bot
       run: |
@@ -70,7 +52,7 @@ jobs:
     
     - name: 📋 Upload logs (if failed)
       if: failure()
-      uses: actions/upload-artifact@v4  # ✅ محدث من v3 إلى v4
+      uses: actions/upload-artifact@v4
       with:
         name: bot-logs
         path: |
