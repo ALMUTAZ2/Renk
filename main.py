@@ -10,14 +10,15 @@ from selenium.webdriver.support import expected_conditions as EC
 from aiogram import Bot
 from aiogram.types import FSInputFile
 import logging
+from datetime import datetime
 
 # إعداد التسجيل
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# إعدادات تليجرام (مضمنة مباشرة)
-TELEGRAM_BOT_TOKEN = "7762932301:AAHkbmxRKhvjeKV9uJNfh8t382cO0Ty7i2M"
-TELEGRAM_CHAT_ID = "521974594"
+# قراءة إعدادات تليجرام من متغيرات البيئة أو القيم المباشرة
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7762932301:AAHkbmxRKhvjeKV9uJNfh8t382cO0Ty7i2M")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "521974594")
 
 # التحقق من وجود البيانات
 if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -277,8 +278,9 @@ async def main():
 
 🕒 الوقت: {time.strftime('%Y-%m-%d %H:%M UTC')}
 📋 تفاصيل الخطأ:
+```
 {str(e)}
-
+```
 
 🔧 **الإجراءات:**
 • سيتم إعادة المحاولة في الموعد القادم
