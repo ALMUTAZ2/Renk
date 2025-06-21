@@ -7,8 +7,6 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.keys import Keys
 from aiogram import Bot
 from aiogram.types import FSInputFile
 import logging
@@ -31,8 +29,8 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 def setup_chrome_driver():
-    """إعداد Chrome Driver لـ GitHub Actions مع تحسينات للشارتات"""
-    logger.info("🔧 إعداد Chrome Driver المحسن...")
+    """إعداد Chrome Driver لـ GitHub Actions"""
+    logger.info("🔧 إعداد Chrome Driver...")
     
     chrome_options = Options()
     
@@ -44,6 +42,8 @@ def setup_chrome_driver():
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--disable-plugins")
+    chrome_options.add_argument("--disable-images")
+    chrome_options.add_argument("--disable-javascript")
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
     
     try:
@@ -63,429 +63,254 @@ SYMBOLS = [
     {"symbol": "XRPUSDT", "name": "XRP"}
 ]
 
-async def wait_for_chart_to_load(driver, max_wait=30):
-    """انتظار تحميل الشارت بالكامل"""
-    logger.info("⏳ انتظار تحميل الشارت...")
+async def capture_tradingview_chart(symbol_info, driver):
+    """التقاط شارت من TradingView"""
+    symbol = symbol_info["symbol"]
+    name = symbol_info["name"]
+    
+    logger.info(f"📈 معالجة {name} ({symbol})...")
     
     try:
-        wait = WebDriverWait(driver, max_wait)
-        chart_container = wait.until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".chart-container"))
-        )
-        logger.info("📊 تم العثور على حاوية الشارت")
-        time.sleep(10)
-        return True
+        # بناء رابط TradingView مع إعدادات Renko
+          url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}&interval=1M&style=4&theme=dark"
         
-    except Exception as e:
-        logger.warning(f"⚠️ انتهت مهلة انتظار الشارت: {e}")
-        return False
-
-async def setup_chart_like_image(driver):
-    """إعداد الشارت ليكون مطابقاً للصورة المرجعية"""
-    logger.info("🎯 إعداد الشارت مطابق للصورة المرجعية...")
-    
-    try:
-        # التركيز على منطقة الشارت
-        chart_area = driver.find_element(By.CSS_SELECTOR, ".chart-container")
-        chart_area.click()
-        time.sleep(2)
+        logger.info(f"🌐 الذهاب إلى: {url}")
+        driver.get(url)
         
-        actions = ActionChains(driver)
+        # انتظار تحميل الصفحة
+        logger.info("⏳ انتظار تحميل الشارت...")
+        time.sleep(15)  # انتظار أطول للتأكد من التحميل
         
-        # 1. تغيير نوع الشارت إلى Renko (مثل الصورة)
-        logger.info("📊 تغيير نوع الشارت إلى Renko...")
+        # أخذ لقطة شاشة
+        file_name = f"{symbol}_chart.png"
         
         try:
-            # البحث عن قائمة أنواع الشارتات
-            chart_type_selectors = [
-                "[data-name='chart-style-switcher']",
-                ".chart-style-switcher",
-                "[data-tooltip*='Chart Type']",
-                ".toolbar-button[data-name='chart-style']",
-                ".chart-controls .chart-style"
-            ]
+            # محاولة العثور على منطقة الشارت
+            wait = WebDriverWait(driver, 10)
+            chart_area = wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, ".layout__area--center"))
+            )
             
-            chart_type_found = False
-            for selector in chart_type_selectors:
-                try:
-                    chart_type_btn = driver.find_element(By.CSS_SELECTOR, selector)
-                    if chart_type_btn.is_displayed():
-                        driver.execute_script("arguments[0].click();", chart_type_btn)
-                        logger.info("📊 تم فتح قائمة أنواع الشارتات")
-                        time.sleep(2)
-                        
-                        # البحث عن Renko في القائمة
-                        renko_selectors = [
-                            "[data-value='renko']",
-                            "[title='Renko']",
-                            "li[data-name='renko']",
-                            ".menu-item[data-value='renko']"
-                        ]
-                        
-                        for renko_selector in renko_selectors:
-                            try:
-                                renko_option = driver.find_element(By.CSS_SELECTOR, renko_selector)
-                                if renko_option.is_displayed():
-                                    driver.execute_script("arguments[0].click();", renko_option)
-                                    logger.info("✅ تم تغيير نوع الشارت إلى Renko")
-                                    time.sleep(3)
-                                    chart_type_found = True
-                                    break
-                            except:
-                                continue
-                        break
-                except:
-                    continue
+            # أخذ لقطة شاشة للشارت فقط
+            chart_area.screenshot(file_name)
+            logger.info(f"📸 تم التقاط شارت {symbol}")
             
-            if not chart_type_found:
-                logger.info("⚠️ لم يتم العثور على خيار Renko، الاستمرار بالشموع العادية...")
-                
         except Exception as e:
-            logger.warning(f"⚠️ فشل في تغيير نوع الشارت: {e}")
+            logger.warning(f"⚠️ فشل في العثور على الشارت، أخذ لقطة شاشة كاملة: {e}")
+            driver.save_screenshot(file_name)
         
-        # 2. تغيير الإطار الزمني إلى شهري (1M) مثل الصورة
-        logger.info("📅 تغيير الإطار الزمني إلى شهري (1M)...")
-        
-        try:
-            # البحث عن زر الإطار الزمني الشهري
-            monthly_timeframe_selectors = [
-                "[data-value='1M']",
-                "[data-interval='1M']",
-                "[title='1 month']",
-                ".timeframe-button[data-value='1M']"
-            ]
+        # التحقق من وجود الملف
+        if os.path.exists(file_name) and os.path.getsize(file_name) > 1000:
+            # إرسال الصورة
+            photo = FSInputFile(file_name)
             
-            monthly_found = False
-            for selector in monthly_timeframe_selectors:
-                try:
-                    monthly_btn = driver.find_element(By.CSS_SELECTOR, selector)
-                    if monthly_btn.is_displayed():
-                        driver.execute_script("arguments[0].click();", monthly_btn)
-                        logger.info("📅 تم تغيير الإطار الزمني إلى شهري")
-                        time.sleep(3)
-                        monthly_found = True
-                        break
-                except:
-                    continue
-            
-            if not monthly_found:
-                # محاولة باستخدام اختصارات لوحة المفاتيح
-                logger.info("⌨️ محاولة تغيير الإطار الزمني باستخدام لوحة المفاتيح...")
-                actions.send_keys('M').perform()  # Monthly
-                time.sleep(2)
-                actions.send_keys('1').perform()  # 1 Month
-                time.sleep(2)
-                
-        except Exception as e:
-            logger.warning(f"⚠️ فشل في تغيير الإطار الزمني: {e}")
-        
-        # 3. تطبيق "Fit Data to Screen" الحقيقي
-        logger.info("🎯 تطبيق Fit Data to Screen...")
-        
-        # استخدام JavaScript المتقدم لتوسيط البيانات
-        fit_data_script = """
-        try {
-            // محاولة استخدام TradingView API
-            if (window.TradingView) {
-                var widgets = document.querySelectorAll('.tradingview-widget-container iframe');
-                if (widgets.length > 0) {
-                    // إرسال رسالة للـ iframe لتوسيط البيانات
-                    widgets[0].contentWindow.postMessage({
-                        name: 'fit-data',
-                        action: 'fitData'
-                    }, '*');
-                }
-            }
-            
-            // البحث عن أزرار Fit Data وتفعيلها
-            var fitSelectors = [
-                '[data-name="fit-data"]',
-                '[title*="Fit"]',
-                '[data-tooltip*="Fit"]',
-                '.control-bar__btn[data-name="fit-data"]'
-            ];
-            
-            fitSelectors.forEach(function(selector) {
-                var elements = document.querySelectorAll(selector);
-                elements.forEach(function(el) {
-                    if (el.offsetParent !== null && !el.disabled) {
-                        el.click();
-                        console.log('تم النقر على زر Fit Data:', selector);
-                    }
-                });
-            });
-            
-            // محاولة إرسال keyboard events
-            var chartContainer = document.querySelector('.chart-container') || document.querySelector('.tv-lightweight-charts');
-            if (chartContainer) {
-                // Alt + F للـ Fit Data
-                var altF = new KeyboardEvent('keydown', {
-                    key: 'f',
-                    altKey: true,
-                    bubbles: true,
-                    cancelable: true
-                });
-                chartContainer.dispatchEvent(altF);
-                
-                // Double-click للـ auto-fit
-                setTimeout(function() {
-                    var dblClick = new MouseEvent('dblclick', {
-                        bubbles: true,
-                        cancelable: true
-                    });
-                    chartContainer.dispatchEvent(dblClick);
-                }, 500);
-            }
-            
-            console.log('تم تنفيذ Fit Data بنجاح');
-        } catch (e) {
-            console.error('خطأ في Fit Data:', e);
-        }
-        """
-        
-        driver.execute_script(fit_data_script)
-        time.sleep(3)
-        
-        # 4. تكبير الشموع لتكون مثل الصورة
-        logger.info("🔍 تكبير الشموع لتكون مثل الصورة...")
-        
-        # تكبير متدرج باستخدام عجلة الماوس
-        zoom_script = """
-        var chartContainer = arguments[0];
-        var center = {
-            x: chartContainer.offsetWidth / 2,
-            y: chartContainer.offsetHeight / 2
-        };
-        
-        // تكبير تدريجي
-        for (var i = 0; i < 12; i++) {
-            setTimeout(function(index) {
-                var wheelEvent = new WheelEvent('wheel', {
-                    deltaY: -120, // تكبير
-                    clientX: center.x,
-                    clientY: center.y,
-                    bubbles: true,
-                    cancelable: true
-                });
-                chartContainer.dispatchEvent(wheelEvent);
-            }, i * 150, i);
-        }
-        """
-        
-        driver.execute_script(zoom_script, chart_area)
-        time.sleep(4)
-        
-        # 5. تعديل مقياس السعر للتوسيط العمودي
-        logger.info("📏 تعديل مقياس السعر للتوسيط العمودي...")
-        
-        try:
-            # النقر المزدوج على مقياس السعر
-            price_scale_selectors = [
-                ".price-axis",
-                ".price-scale", 
-                ".tv-lightweight-charts__price-axis",
-                ".price-axis-container"
-            ]
-            
-            for selector in price_scale_selectors:
-                try:
-                    price_scale = driver.find_element(By.CSS_SELECTOR, selector)
-                    if price_scale.is_displayed():
-                        actions.double_click(price_scale).perform()
-                        logger.info("📏 تم توسيط مقياس السعر")
-                        time.sleep(2)
-                        break
-                except:
-                    continue
-                    
-        except Exception as e:
-            logger.warning(f"⚠️ فشل في تعديل مقياس السعر: {e}")
-        
-        # 6. تحسين عرض الشموع
-        logger.info("📊 تحسين عرض الشموع...")
-        
-        # استخدام اختصارات لوحة المفاتيح لتحسين العرض
-        keyboard_improvements = [
-            # تكبير إضافي
-            lambda: actions.key_down(Keys.CONTROL).send_keys(Keys.ADD).key_up(Keys.CONTROL).perform(),
-            # تعديل العرض
-            lambda: actions.send_keys(Keys.SPACE).perform(),
-            # إعادة ضبط العرض
-            lambda: actions.key_down(Keys.ALT).send_keys('r').key_up(Keys.ALT).perform()
-        ]
-        
-        for improvement in keyboard_improvements:
-            try:
-                improvement()
-                time.sleep(1)
-            except:
-                continue
-        
-        # 7. تطبيق Fit Data مرة أخيرة للتأكد
-        logger.info("🎯 تطبيق Fit Data النهائي...")
-        
-        # اختصار Alt+F للـ Fit Data
-        try:
-            actions.key_down(Keys.ALT).send_keys('f').key_up(Keys.ALT).perform()
-            time.sleep(2)
-        except:
-            pass
-        
-        # Double-click على الشارت للـ auto-fit
-        try:
-            actions.double_click(chart_area).perform()
-            time.sleep(2)
-        except:
-            pass
-        
-        # انتظار إضافي للتأكد من تطبيق جميع التحسينات
-        time.sleep(5)
-        
-        logger.info("✅ تم إعداد الشارت بنجاح مطابق للصورة المرجعية")
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ خطأ في إعداد الشارت: {e}")
-        return False
-
-async def take_screenshot(driver, symbol_name):
-    """التقاط لقطة شاشة محسنة"""
-    logger.info(f"📸 التقاط لقطة شاشة لـ {symbol_name}...")
-    
-    try:
-        # انتظار إضافي للتأكد من استقرار الشارت
-        time.sleep(3)
-        
-        # إخفاء العناصر غير المرغوب فيها
-        hide_elements_script = """
-        // إخفاء الإعلانات والعناصر المشتتة
-        var elementsToHide = [
-            '.tv-dialog-manager',
-            '.tv-toast-manager',
-            '.tv-notifications-dialog',
-            '.tv-header__area--right',
-            '.tv-header__logo',
-            '.tv-screener-popup',
-            '.tv-floating-toolbar'
-        ];
-        
-        elementsToHide.forEach(function(selector) {
-            var elements = document.querySelectorAll(selector);
-            elements.forEach(function(el) {
-                el.style.display = 'none';
-            });
-        });
-        """
-        
-        driver.execute_script(hide_elements_script)
-        time.sleep(1)
-        
-        # التقاط لقطة الشاشة
-        filename = f"{symbol_name}_chart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-        filepath = f"/tmp/{filename}"
-        
-        driver.save_screenshot(filepath)
-        logger.info(f"✅ تم حفظ لقطة الشاشة: {filename}")
-        
-        return filepath
-        
-    except Exception as e:
-        logger.error(f"❌ خطأ في التقاط لقطة الشاشة: {e}")
-        return None
-
-async def send_to_telegram(filepath, symbol_name):
-    """إرسال الصورة إلى تليجرام"""
-    logger.info(f"📤 إرسال {symbol_name} إلى تليجرام...")
-    
-    try:
-        if filepath and os.path.exists(filepath):
-            photo = FSInputFile(filepath)
-            
-            caption = f"""
-🚀 **تحليل {symbol_name}**
-📊 الإطار الزمني: شهري (1M)
-📈 نوع الشارت: Renko المحسن
-🎯 البيانات موسطة ومكبرة للوضوح الأمثل
-
-⏰ وقت التحديث: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-            """
-            
-            await bot.send_photo(
+            # إرسال رسالة نصية أولاً
+            await bot.send_message(
                 chat_id=TELEGRAM_CHAT_ID,
-                photo=photo,
-                caption=caption,
+                text=f"📊 **شارت {name} ({symbol})**\n🔗 TradingView - Renko Chart\n📅 {time.strftime('%Y-%m-%d %H:%M UTC')}",
                 parse_mode="Markdown"
             )
             
-            logger.info(f"✅ تم إرسال {symbol_name} بنجاح")
+            # إرسال الصورة
+            await bot.send_photo(
+                chat_id=TELEGRAM_CHAT_ID,
+                photo=photo,
+                caption=f"📈 {name} - Renko Chart"
+            )
             
-            # حذف الملف المؤقت
-            os.remove(filepath)
+            # حذف الملف
+            os.remove(file_name)
+            logger.info(f"✅ تم إرسال شارت {symbol} بنجاح")
+            return True
             
         else:
-            logger.error(f"❌ الملف غير موجود: {filepath}")
+            logger.error(f"❌ فشل في إنشاء ملف صحيح لـ {symbol}")
+            return False
             
     except Exception as e:
-        logger.error(f"❌ خطأ في إرسال {symbol_name}: {e}")
+        logger.error(f"❌ خطأ في معالجة {symbol}: {e}")
+        return False
 
-async def process_symbol(driver, symbol_data):
-    """معالجة عملة واحدة"""
-    symbol = symbol_data["symbol"]
-    name = symbol_data["name"]
-    
-    logger.info(f"🔄 معالجة {name} ({symbol})...")
-    
+async def send_summary_message(successful_charts):
+    """إرسال رسالة ملخص شهرية"""
     try:
-        # الانتقال إلى الرمز
-        url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}"
-        driver.get(url)
+        total_symbols = len(SYMBOLS)
+        success_count = len(successful_charts)
         
-        # انتظار تحميل الشارت
-        if await wait_for_chart_to_load(driver):
-            # إعداد الشارت مطابق للصورة
-            if await setup_chart_like_image(driver):
-                # التقاط لقطة الشاشة
-                filepath = await take_screenshot(driver, name)
-                
-                if filepath:
-                    # إرسال إلى تليجرام
-                    await send_to_telegram(filepath, name)
-                    logger.info(f"✅ تم إنجاز {name} بنجاح")
-                else:
-                    logger.error(f"❌ فشل في التقاط لقطة شاشة لـ {name}")
-            else:
-                logger.error(f"❌ فشل في إعداد الشارت لـ {name}")
-        else:
-            logger.error(f"❌ فشل في تحميل الشارت لـ {name}")
-            
-        # انتظار بين العملات
-        time.sleep(3)
+        # تحديد الشهر والسنة الحاليين
+        current_date = datetime.now()
+        month_names = {
+            1: "يناير", 2: "فبراير", 3: "مارس", 4: "أبريل",
+            5: "مايو", 6: "يونيو", 7: "يوليو", 8: "أغسطس",
+            9: "سبتمبر", 10: "أكتوبر", 11: "نوفمبر", 12: "ديسمبر"
+        }
+        current_month = month_names[current_date.month]
+        current_year = current_date.year
+        
+        # تحديد الشهر القادم
+        next_month_num = current_date.month + 1 if current_date.month < 12 else 1
+        next_year = current_year if current_date.month < 12 else current_year + 1
+        next_month = month_names[next_month_num]
+        
+        summary = f"""
+🌙 **التقرير الشهري - بوت الشارتات**
+📅 الشهر: {current_month} {current_year}
+🕒 التاريخ والوقت: {time.strftime('%Y-%m-%d %H:%M UTC')}
+
+📊 **نتائج هذا الشهر:**
+✅ نجح: {success_count}/{total_symbols}
+❌ فشل: {total_symbols - success_count}/{total_symbols}
+
+✅ **الشارتات المُرسلة:**
+{chr(10).join([f"• {info['name']} ({info['symbol']})" for info in successful_charts])}
+
+📈 **معلومات إضافية:**
+• نوع الشارت: Renko Charts
+• المصدر: TradingView
+• البورصة: Binance
+• الإطار الزمني: 1 شهر
+
+🔄 **الموعد القادم:** 
+📅 أول يوم من شهر {next_month} {next_year}
+🕒 الساعة 3:00 صباحاً (UTC)
+
+🤖 **المصدر:** GitHub Actions Bot
+💡 **حالة البوت:** نشط ويعمل تلقائياً
+        """.strip()
+        
+        await bot.send_message(
+            chat_id=TELEGRAM_CHAT_ID,
+            text=summary,
+            parse_mode="Markdown"
+        )
+        
+        logger.info("📋 تم إرسال ملخص التقرير الشهري")
         
     except Exception as e:
-        logger.error(f"❌ خطأ في معالجة {name}: {e}")
+        logger.error(f"❌ خطأ في إرسال الملخص: {e}")
+
+async def send_monthly_greeting():
+    """إرسال رسالة ترحيب شهرية"""
+    try:
+        current_date = datetime.now()
+        month_names = {
+            1: "يناير", 2: "فبراير", 3: "مارس", 4: "أبريل",
+            5: "مايو", 6: "يونيو", 7: "يوليو", 8: "أغسطس",
+            9: "سبتمبر", 10: "أكتوبر", 11: "نوفمبر", 12: "ديسمبر"
+        }
+        current_month = month_names[current_date.month]
+        current_year = current_date.year
+        
+        greeting = f"""
+🚀 **مرحباً بك في التقرير الشهري!**
+
+📅 **{current_month} {current_year}**
+🕒 بدء التشغيل: {time.strftime('%Y-%m-%d %H:%M UTC')}
+
+📊 **ما سيتم عمله:**
+• جلب شارتات Renko للعملات الرقمية
+• التقاط صور عالية الجودة من TradingView
+• إرسال شارت رينكو شهري 
+
+⏳ **جاري المعالجة...**
+يرجى الانتظار بينما نجلب أحدث الشارتات لك
+        """.strip()
+        
+        await bot.send_message(
+            chat_id=TELEGRAM_CHAT_ID,
+            text=greeting,
+            parse_mode="Markdown"
+        )
+        
+        logger.info("👋 تم إرسال رسالة الترحيب الشهرية")
+        
+    except Exception as e:
+        logger.error(f"❌ خطأ في إرسال رسالة الترحيب: {e}")
 
 async def main():
     """الدالة الرئيسية"""
-    logger.info("🚀 بدء تشغيل بوت الشارتات المحسن...")
+    logger.info("🚀 بدء تشغيل بوت الشارتات الشهري...")
     
-    driver = None
+    # إرسال رسالة ترحيب شهرية
+    await send_monthly_greeting()
+    
+    # إعداد Driver
+    driver = setup_chrome_driver()
+    successful_charts = []
+    failed_charts = []
+    
     try:
-        # إعداد المتصفح
-        driver = setup_chrome_driver()
-        
         # معالجة كل عملة
-        for symbol_data in SYMBOLS:
-            await process_symbol(driver, symbol_data)
+        for i, symbol_info in enumerate(SYMBOLS):
+            logger.info(f"🔄 معالجة العملة {i+1}/{len(SYMBOLS)}: {symbol_info['name']}")
+            
+            success = await capture_tradingview_chart(symbol_info, driver)
+            
+            if success:
+                successful_charts.append(symbol_info)
+            else:
+                failed_charts.append(symbol_info)
+            
+            # انتظار بين العملات لتجنب الحظر
+            if i < len(SYMBOLS) - 1:
+                logger.info("⏳ انتظار بين العملات...")
+                time.sleep(10)
         
-        logger.info("🎉 تم إنجاز جميع العملات بنجاح!")
+        # إرسال ملخص النتائج الشهري
+        await send_summary_message(successful_charts)
         
+        # إرسال تفاصيل إضافية إذا كان هناك فشل
+        if failed_charts:
+            failed_list = "\n".join([f"• {info['name']} ({info['symbol']})" for info in failed_charts])
+            await bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=f"⚠️ **العملات التي فشل في معالجتها:**\n{failed_list}\n\n🔧 سيتم إعادة المحاولة في التقرير القادم",
+                parse_mode="Markdown"
+            )
+                
     except Exception as e:
-        logger.error(f"❌ خطأ في التشغيل الرئيسي: {e}")
-    
+        logger.error(f"❌ خطأ عام: {e}")
+        
+        # إرسال رسالة خطأ مفصلة
+        try:
+            error_message = f"""
+❌ **خطأ في البوت الشهري**
+
+🕒 الوقت: {time.strftime('%Y-%m-%d %H:%M UTC')}
+📋 تفاصيل الخطأ:
+```
+{str(e)}
+```
+
+🔧 **الإجراءات:**
+• سيتم إعادة المحاولة في الموعد القادم
+• تحقق من حالة GitHub Actions
+• راجع سجلات الأخطاء للمزيد من التفاصيل
+            """.strip()
+            
+            await bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=error_message,
+                parse_mode="Markdown"
+            )
+        except:
+            logger.error("فشل في إرسال رسالة الخطأ")
+        
     finally:
-        if driver:
+        # إغلاق Driver والبوت
+        try:
             driver.quit()
-            logger.info("🔚 تم إغلاق المتصفح")
+            logger.info("🔒 تم إغلاق Chrome Driver")
+        except:
+            logger.warning("⚠️ خطأ في إغلاق Driver")
+            
+        try:
+            await bot.session.close()
+            logger.info("🔒 تم إغلاق جلسة البوت")
+        except:
+            logger.warning("⚠️ خطأ في إغلاق جلسة البوت")
+            
+        logger.info("🏁 انتهى التشغيل الشهري")
 
 if __name__ == "__main__":
     asyncio.run(main())
