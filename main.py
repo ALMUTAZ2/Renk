@@ -345,7 +345,7 @@ async def capture_tradingview_chart(symbol_info, driver):
     try:
         # بناء رابط TradingView مع إعدادات محسنة
         # استخدام إطار زمني أكبر لإظهار المزيد من البيانات
-        url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}&interval=1D&style=1&theme=dark"
+        url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}&interval=1M&style=4&theme=dark"
         
         logger.info(f"🌐 الذهاب إلى: {url}")
         driver.get(url)
