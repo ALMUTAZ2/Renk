@@ -131,24 +131,50 @@ async def capture_tradingview_chart(symbol_info, driver):
         return False
 
 async def send_summary_message(successful_charts):
-    """إرسال رسالة ملخص"""
+    """إرسال رسالة ملخص شهرية"""
     try:
         total_symbols = len(SYMBOLS)
         success_count = len(successful_charts)
         
+        # تحديد الشهر والسنة الحاليين
+        current_date = datetime.now()
+        month_names = {
+            1: "يناير", 2: "فبراير", 3: "مارس", 4: "أبريل",
+            5: "مايو", 6: "يونيو", 7: "يوليو", 8: "أغسطس",
+            9: "سبتمبر", 10: "أكتوبر", 11: "نوفمبر", 12: "ديسمبر"
+        }
+        current_month = month_names[current_date.month]
+        current_year = current_date.year
+        
+        # تحديد الشهر القادم
+        next_month_num = current_date.month + 1 if current_date.month < 12 else 1
+        next_year = current_year if current_date.month < 12 else current_year + 1
+        next_month = month_names[next_month_num]
+        
         summary = f"""
-🤖 **تقرير بوت الشارتات**
-📅 التاريخ: {time.strftime('%Y-%m-%d %H:%M UTC')}
+🌙 **التقرير الشهري - بوت الشارتات**
+📅 الشهر: {current_month} {current_year}
+🕒 التاريخ والوقت: {time.strftime('%Y-%m-%d %H:%M UTC')}
 
-📊 **النتائج:**
+📊 **نتائج هذا الشهر:**
 ✅ نجح: {success_count}/{total_symbols}
 ❌ فشل: {total_symbols - success_count}/{total_symbols}
 
-✅ **الشارتات المرسلة:**
-{chr(10).join([f"• {info['name']}" for info in successful_charts])}
+✅ **الشارتات المُرسلة:**
+{chr(10).join([f"• {info['name']} ({info['symbol']})" for info in successful_charts])}
 
-🔄 **التشغيل التالي:** خلال 6 ساعات
+📈 **معلومات إضافية:**
+• نوع الشارت: Renko Charts
+• المصدر: TradingView
+• البورصة: Binance
+• الإطار الزمني: 1 دقيقة
+
+🔄 **الموعد القادم:** 
+📅 أول يوم من شهر {next_month} {next_year}
+🕒 الساعة 3:00 صباحاً (UTC)
+
 🤖 **المصدر:** GitHub Actions Bot
+💡 **حالة البوت:** نشط ويعمل تلقائياً
         """.strip()
         
         await bot.send_message(
@@ -157,63 +183,132 @@ async def send_summary_message(successful_charts):
             parse_mode="Markdown"
         )
         
-        logger.info("📋 تم إرسال ملخص التقرير")
+        logger.info("📋 تم إرسال ملخص التقرير الشهري")
         
     except Exception as e:
         logger.error(f"❌ خطأ في إرسال الملخص: {e}")
 
-async def main():
-    """الدالة الرئيسية"""
-    logger.info("🚀 بدء تشغيل بوت الشارتات...")
-    
-    # إرسال رسالة بداية
+async def send_monthly_greeting():
+    """إرسال رسالة ترحيب شهرية"""
     try:
+        current_date = datetime.now()
+        month_names = {
+            1: "يناير", 2: "فبراير", 3: "مارس", 4: "أبريل",
+            5: "مايو", 6: "يونيو", 7: "يوليو", 8: "أغسطس",
+            9: "سبتمبر", 10: "أكتوبر", 11: "نوفمبر", 12: "ديسمبر"
+        }
+        current_month = month_names[current_date.month]
+        current_year = current_date.year
+        
+        greeting = f"""
+🚀 **مرحباً بك في التقرير الشهري!**
+
+📅 **{current_month} {current_year}**
+🕒 بدء التشغيل: {time.strftime('%Y-%m-%d %H:%M UTC')}
+
+📊 **ما سيتم عمله:**
+• جلب شارتات Renko للعملات الرقمية
+• التقاط صور عالية الجودة من TradingView
+• إرسال تحليل شهري شامل
+
+⏳ **جاري المعالجة...**
+يرجى الانتظار بينما نجلب أحدث الشارتات لك
+        """.strip()
+        
         await bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
-            text="🚀 **بدء تشغيل بوت الشارتات**\n⏳ جاري جلب الشارتات من TradingView...",
+            text=greeting,
             parse_mode="Markdown"
         )
+        
+        logger.info("👋 تم إرسال رسالة الترحيب الشهرية")
+        
     except Exception as e:
-        logger.error(f"❌ خطأ في إرسال رسالة البداية: {e}")
+        logger.error(f"❌ خطأ في إرسال رسالة الترحيب: {e}")
+
+async def main():
+    """الدالة الرئيسية"""
+    logger.info("🚀 بدء تشغيل بوت الشارتات الشهري...")
+    
+    # إرسال رسالة ترحيب شهرية
+    await send_monthly_greeting()
     
     # إعداد Driver
     driver = setup_chrome_driver()
     successful_charts = []
+    failed_charts = []
     
     try:
         # معالجة كل عملة
         for i, symbol_info in enumerate(SYMBOLS):
+            logger.info(f"🔄 معالجة العملة {i+1}/{len(SYMBOLS)}: {symbol_info['name']}")
+            
             success = await capture_tradingview_chart(symbol_info, driver)
             
             if success:
                 successful_charts.append(symbol_info)
+            else:
+                failed_charts.append(symbol_info)
             
             # انتظار بين العملات لتجنب الحظر
             if i < len(SYMBOLS) - 1:
                 logger.info("⏳ انتظار بين العملات...")
                 time.sleep(10)
         
-        # إرسال ملخص النتائج
+        # إرسال ملخص النتائج الشهري
         await send_summary_message(successful_charts)
+        
+        # إرسال تفاصيل إضافية إذا كان هناك فشل
+        if failed_charts:
+            failed_list = "\n".join([f"• {info['name']} ({info['symbol']})" for info in failed_charts])
+            await bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=f"⚠️ **العملات التي فشل في معالجتها:**\n{failed_list}\n\n🔧 سيتم إعادة المحاولة في التقرير القادم",
+                parse_mode="Markdown"
+            )
                 
     except Exception as e:
         logger.error(f"❌ خطأ عام: {e}")
         
-        # إرسال رسالة خطأ
+        # إرسال رسالة خطأ مفصلة
         try:
+            error_message = f"""
+❌ **خطأ في البوت الشهري**
+
+🕒 الوقت: {time.strftime('%Y-%m-%d %H:%M UTC')}
+📋 تفاصيل الخطأ:
+{str(e)}
+
+
+🔧 **الإجراءات:**
+• سيتم إعادة المحاولة في الموعد القادم
+• تحقق من حالة GitHub Actions
+• راجع سجلات الأخطاء للمزيد من التفاصيل
+            """.strip()
+            
             await bot.send_message(
                 chat_id=TELEGRAM_CHAT_ID,
-                text=f"❌ **خطأ في البوت**\n```{str(e)}```",
+                text=error_message,
                 parse_mode="Markdown"
             )
         except:
-            pass
+            logger.error("فشل في إرسال رسالة الخطأ")
         
     finally:
         # إغلاق Driver والبوت
-        driver.quit()
-        await bot.session.close()
-        logger.info("🏁 انتهى التشغيل")
+        try:
+            driver.quit()
+            logger.info("🔒 تم إغلاق Chrome Driver")
+        except:
+            logger.warning("⚠️ خطأ في إغلاق Driver")
+            
+        try:
+            await bot.session.close()
+            logger.info("🔒 تم إغلاق جلسة البوت")
+        except:
+            logger.warning("⚠️ خطأ في إغلاق جلسة البوت")
+            
+        logger.info("🏁 انتهى التشغيل الشهري")
 
 if __name__ == "__main__":
     asyncio.run(main())
