@@ -70,7 +70,8 @@ async def capture_tradingview_chart(symbol_info, driver):
     
     try:
         # بناء رابط TradingView مع الثيم الداكن
-        url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}&interval=1M&theme=dark"
+        url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}&interval=1M&style=4&theme=dark"
+
         
         logger.info(f"🌐 الذهاب إلى: {url}")
         driver.get(url)
@@ -203,9 +204,7 @@ async def send_monthly_greeting():
 🕒 بدء التشغيل: {time.strftime('%Y-%m-%d %H:%M UTC')}
 
 📊 **ما سيتم عمله:**
-• جلب شارتات للعملات الرقمية
-• التقاط صور عالية الجودة من TradingView
-• إرسال التقرير الشهري
+•تصوير شارتات العملات الرقمية على فريم شهري رينكو و ارساله علي التليجرام بشكل شهري 
 
 ⏳ **جاري المعالجة...**
 يرجى الانتظار بينما نجلب أحدث الشارتات لك
