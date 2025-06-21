@@ -1,17 +1,18 @@
 name: 🚀 Crypto Charts Bot
 
 on:
-  # تشغيل تلقائي كل 6 ساعات
+  # تشغيل شهري - اليوم الأول من كل شهر في الساعة 3 صباحاً
   schedule:
-    - cron: '0 */6 * * *'  # كل 6 ساعات
+    - cron: '0 3 1 * *'  # شهرياً بدلاً من كل 6 ساعات
     
-  # تشغيل يدوي
+  # تشغيل يدوي للاختبار
   workflow_dispatch:
     inputs:
       test_mode:
         description: 'Test mode (true/false)'
         required: false
         default: 'false'
+
 
 jobs:
   send-crypto-charts:
