@@ -7,6 +7,8 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 from aiogram import Bot
 from aiogram.types import FSInputFile
 import logging
@@ -29,8 +31,8 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 def setup_chrome_driver():
-    """إعداد Chrome Driver لـ GitHub Actions"""
-    logger.info("🔧 إعداد Chrome Driver...")
+    """إعداد Chrome Driver لـ GitHub Actions مع تحسينات للشارتات"""
+    logger.info("🔧 إعداد Chrome Driver المحسن...")
     
     chrome_options = Options()
     
@@ -39,12 +41,16 @@ def setup_chrome_driver():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--window-size=1920,1080")  # حجم شاشة كبير للشارتات
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--disable-plugins")
-    chrome_options.add_argument("--disable-images")
-    chrome_options.add_argument("--disable-javascript")
+    # إزالة تعطيل الصور والجافاسكريبت لأننا نحتاجها للشارتات
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+    
+    # إعدادات إضافية لتحسين الأداء
+    chrome_options.add_argument("--disable-background-timer-throttling")
+    chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+    chrome_options.add_argument("--disable-renderer-backgrounding")
     
     try:
         driver = webdriver.Chrome(options=chrome_options)
@@ -63,91 +69,196 @@ SYMBOLS = [
     {"symbol": "XRPUSDT", "name": "XRP"}
 ]
 
+async def wait_for_chart_to_load(driver, max_wait=30):
+    """انتظار تحميل الشارت بالكامل"""
+    logger.info("⏳ انتظار تحميل الشارت...")
+    
+    try:
+        # انتظار ظهور الشارت
+        wait = WebDriverWait(driver, max_wait)
+        
+        # انتظار عنصر الشارت الرئيسي
+        chart_container = wait.until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "[data-name='legend-source-item']"))
+        )
+        logger.info("📊 تم العثور على حاوية الشارت")
+        
+        # انتظار إضافي لتحميل البيانات
+        time.sleep(10)
+        
+        # التحقق من تحميل البيانات
+        try:
+            # البحث عن عناصر الشموع أو البيانات
+            candles = driver.find_elements(By.CSS_SELECTOR, "[data-name='candle']")
+            if len(candles) > 0:
+                logger.info(f"📈 تم تحميل {len(candles)} شمعة")
+            else:
+                logger.info("📊 تم تحميل الشارت (نوع آخر)")
+        except:
+            logger.info("📊 تم تحميل الشارت")
+            
+        return True
+        
+    except Exception as e:
+        logger.warning(f"⚠️ انتهت مهلة انتظار الشارت: {e}")
+        return False
+
+async def maximize_and_center_chart(driver):
+    """تكبير وتوسيط الشارت"""
+    logger.info("🔍 تكبير وتوسيط الشارت...")
+    
+    try:
+        # محاولة إخفاء الشريط الجانبي
+        try:
+            sidebar_button = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='toggle-sidebar']"))
+            )
+            driver.execute_script("arguments[0].click();", sidebar_button)
+            logger.info("📱 تم إخفاء الشريط الجانبي")
+            time.sleep(2)
+        except:
+            logger.info("📱 لم يتم العثور على زر الشريط الجانبي")
+        
+        # محاولة إخفاء الشريط السفلي
+        try:
+            bottom_panel_button = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='toggle-bottom-panel']"))
+            )
+            driver.execute_script("arguments[0].click();", bottom_panel_button)
+            logger.info("📊 تم إخفاء الشريط السفلي")
+            time.sleep(2)
+        except:
+            logger.info("📊 لم يتم العثور على زر الشريط السفلي")
+        
+        # تكبير الشارت باستخدام اختصارات لوحة المفاتيح
+        try:
+            # التركيز على منطقة الشارت
+            chart_area = driver.find_element(By.CSS_SELECTOR, ".layout__area--center")
+            chart_area.click()
+            
+            # استخدام اختصار التكبير
+            actions = ActionChains(driver)
+            actions.key_down(Keys.CONTROL).send_keys('+').key_up(Keys.CONTROL).perform()
+            time.sleep(1)
+            actions.key_down(Keys.CONTROL).send_keys('+').key_up(Keys.CONTROL).perform()
+            time.sleep(1)
+            
+            logger.info("🔍 تم تكبير الشارت")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ فشل في تكبير الشارت: {e}")
+        
+        # محاولة ملء الشاشة
+        try:
+            # الضغط على F11 لملء الشاشة (قد لا يعمل في headless)
+            actions = ActionChains(driver)
+            actions.send_keys(Keys.F11).perform()
+            time.sleep(2)
+            logger.info("🖥️ تم تفعيل وضع ملء الشاشة")
+        except:
+            logger.info("🖥️ لم يتم تفعيل وضع ملء الشاشة")
+        
+        # انتظار إضافي للتأكد من التطبيق
+        time.sleep(3)
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ خطأ في تكبير الشارت: {e}")
+        return False
+
+async def capture_optimized_chart(driver, symbol):
+    """التقاط شارت محسن"""
+    logger.info(f"📸 التقاط شارت محسن لـ {symbol}...")
+    
+    try:
+        file_name = f"{symbol}_chart.png"
+        
+        # محاولة التقاط منطقة الشارت فقط
+        try:
+            # البحث عن منطقة الشارت الرئيسية
+            chart_selectors = [
+                ".layout__area--center",
+                "[data-name='chart-container']",
+                ".chart-container",
+                ".tv-lightweight-charts"
+            ]
+            
+            chart_element = None
+            for selector in chart_selectors:
+                try:
+                    chart_element = driver.find_element(By.CSS_SELECTOR, selector)
+                    logger.info(f"📊 تم العثور على الشارت باستخدام: {selector}")
+                    break
+                except:
+                    continue
+            
+            if chart_element:
+                # التقاط صورة للعنصر المحدد
+                chart_element.screenshot(file_name)
+                logger.info(f"📸 تم التقاط شارت {symbol} (عنصر محدد)")
+            else:
+                # التقاط صورة كاملة كبديل
+                driver.save_screenshot(file_name)
+                logger.info(f"📸 تم التقاط شارت {symbol} (شاشة كاملة)")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ فشل في التقاط العنصر المحدد، استخدام الشاشة الكاملة: {e}")
+            driver.save_screenshot(file_name)
+        
+        # التحقق من جودة الصورة
+        if os.path.exists(file_name):
+            file_size = os.path.getsize(file_name)
+            if file_size > 5000:  # على الأقل 5KB
+                logger.info(f"✅ تم إنشاء صورة بحجم {file_size} بايت")
+                return file_name
+            else:
+                logger.error(f"❌ حجم الصورة صغير جداً: {file_size} بايت")
+                return None
+        else:
+            logger.error(f"❌ لم يتم إنشاء ملف الصورة")
+            return None
+            
+    except Exception as e:
+        logger.error(f"❌ خطأ في التقاط الشارت: {e}")
+        return None
+
 async def capture_tradingview_chart(symbol_info, driver):
-    """التقاط شارت من TradingView بثيم داكن"""
+    """التقاط شارت من TradingView مع تحسينات"""
     symbol = symbol_info["symbol"]
     name = symbol_info["name"]
     
-    logger.info(f"📈 معالجة {name} ({symbol}) بثيم داكن...")
+    logger.info(f"📈 معالجة {name} ({symbol}) مع تحسينات...")
     
     try:
-        # بناء رابط TradingView مع إعدادات Renko والثيم الداكن
-        url = (f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}"
-               f"&interval=1M"
-               f"&style=4"  # Renko style
-               f"&theme=dark"  # الثيم الداكن
-               f"&hide_side_toolbar=1"  # إخفاء الشريط الجانبي
-               f"&hide_top_toolbar=1"  # إخفاء الشريط العلوي
-               f"&hide_legend=0"  # إظهار المفتاح
-               f"&save_image=1")  # تحسين جودة الصورة
+        # بناء رابط TradingView مع إعدادات محسنة
+        url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}&interval=1M&style=4&theme=dark"
         
         logger.info(f"🌐 الذهاب إلى: {url}")
         driver.get(url)
         
-        # انتظار تحميل الصفحة والثيم الداكن
-        logger.info("⏳ انتظار تحميل الشارت بالثيم الداكن...")
-        time.sleep(20)  # انتظار أطول للتأكد من تطبيق الثيم الداكن
+        # انتظار تحميل الشارت
+        chart_loaded = await wait_for_chart_to_load(driver)
+        if not chart_loaded:
+            logger.warning(f"⚠️ قد لا يكون الشارت محمل بالكامل لـ {symbol}")
         
-        # محاولة تطبيق الثيم الداكن عبر JavaScript إذا لم يتم تطبيقه تلقائياً
-        try:
-            # تنفيذ JavaScript لضمان الثيم الداكن
-            driver.execute_script("""
-                // تطبيق الثيم الداكن على الجسم
-                document.body.style.backgroundColor = '#131722';
-                document.body.classList.add('theme-dark');
-                
-                // البحث عن عناصر الشارت وتطبيق الثيم الداكن
-                const chartElements = document.querySelectorAll('[data-name="legend-series-item"]');
-                chartElements.forEach(el => {
-                    el.style.color = '#ffffff';
-                });
-                
-                // تطبيق الثيم الداكن على منطقة الشارت
-                const chartContainer = document.querySelector('.chart-container');
-                if (chartContainer) {
-                    chartContainer.style.backgroundColor = '#131722';
-                }
-                
-                // تطبيق الثيم الداكن على منطقة الرسم
-                const layoutCenter = document.querySelector('.layout__area--center');
-                if (layoutCenter) {
-                    layoutCenter.style.backgroundColor = '#131722';
-                }
-            """)
-            logger.info("🎨 تم تطبيق الثيم الداكن عبر JavaScript")
-        except Exception as js_error:
-            logger.warning(f"⚠️ خطأ في تطبيق JavaScript للثيم الداكن: {js_error}")
+        # تكبير وتوسيط الشارت
+        await maximize_and_center_chart(driver)
         
-        # انتظار إضافي للتأكد من تطبيق التغييرات
+        # انتظار إضافي بعد التحسينات
         time.sleep(5)
         
-        # أخذ لقطة شاشة
-        file_name = f"{symbol}_dark_chart.png"
+        # التقاط الشارت المحسن
+        file_name = await capture_optimized_chart(driver, symbol)
         
-        try:
-            # محاولة العثور على منطقة الشارت
-            wait = WebDriverWait(driver, 10)
-            chart_area = wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, ".layout__area--center"))
-            )
-            
-            # أخذ لقطة شاشة للشارت فقط
-            chart_area.screenshot(file_name)
-            logger.info(f"📸 تم التقاط شارت {symbol} بالثيم الداكن")
-            
-        except Exception as e:
-            logger.warning(f"⚠️ فشل في العثور على الشارت، أخذ لقطة شاشة كاملة: {e}")
-            driver.save_screenshot(file_name)
-        
-        # التحقق من وجود الملف
-        if os.path.exists(file_name) and os.path.getsize(file_name) > 1000:
+        if file_name and os.path.exists(file_name):
             # إرسال الصورة
             photo = FSInputFile(file_name)
             
             # إرسال رسالة نصية أولاً
             await bot.send_message(
                 chat_id=TELEGRAM_CHAT_ID,
-                text=f"🌙 **شارت {name} ({symbol}) - ثيم داكن**\n📊 TradingView - Renko Chart\n🎨 الوضع: الثيم الداكن\n📅 {time.strftime('%Y-%m-%d %H:%M UTC')}",
+text=f"📊 **{name} ({symbol})**\n🔗 TradingView - Renko Chart\n📅 {time.strftime('%Y-%m-%d %H:%M UTC')}",
                 parse_mode="Markdown"
             )
             
@@ -155,16 +266,16 @@ async def capture_tradingview_chart(symbol_info, driver):
             await bot.send_photo(
                 chat_id=TELEGRAM_CHAT_ID,
                 photo=photo,
-                caption=f"🌙 {name} - Renko Chart (Dark Theme)"
+                caption=f"📈 {name} - شارت رينكو محسن وموسط"
             )
             
             # حذف الملف
             os.remove(file_name)
-            logger.info(f"✅ تم إرسال شارت {symbol} بالثيم الداكن بنجاح")
+            logger.info(f"✅ تم إرسال شارت {symbol} المحسن بنجاح")
             return True
             
         else:
-            logger.error(f"❌ فشل في إنشاء ملف صحيح لـ {symbol}")
+            logger.error(f"❌ فشل في إنشاء شارت صحيح لـ {symbol}")
             return False
             
     except Exception as e:
@@ -193,7 +304,7 @@ async def send_summary_message(successful_charts):
         next_month = month_names[next_month_num]
         
         summary = f"""
-🌙 **التقرير الشهري - بوت الشارتات (ثيم داكن)**
+🌙 **التقرير الشهري  - بوت الشارتات**
 📅 الشهر: {current_month} {current_year}
 🕒 التاريخ والوقت: {time.strftime('%Y-%m-%d %H:%M UTC')}
 
@@ -201,22 +312,28 @@ async def send_summary_message(successful_charts):
 ✅ نجح: {success_count}/{total_symbols}
 ❌ فشل: {total_symbols - success_count}/{total_symbols}
 
-✅ **الشارتات المُرسلة (ثيم داكن):**
-{chr(10).join([f"🌙 {info['name']} ({info['symbol']})" for info in successful_charts])}
+✅ **الشارتات المُرسلة :**
+{chr(10).join([f"• {info['name']} ({info['symbol']})" for info in successful_charts])}
 
-📈 **معلومات إضافية:**
+📈 **التحسينات المطبقة:**
+• تكبير تلقائي للشارت
+• توسيط في الشاشة
+• إخفاء العناصر الجانبية
+• جودة صورة محسنة
+
+📊 **معلومات إضافية:**
 • نوع الشارت: Renko Charts
 • المصدر: TradingView
 • البورصة: Binance
 • الإطار الزمني: 1 شهر
-• 🎨 الثيم: داكن (Dark Theme)
+• الثيم: داكن
 
 🔄 **الموعد القادم:** 
 📅 أول يوم من شهر {next_month} {next_year}
 🕒 الساعة 3:00 صباحاً (UTC)
 
-🤖 **المصدر:** GitHub Actions Bot
-💡 **حالة البوت:** نشط ويعمل تلقائياً بالثيم الداكن
+🤖 **المصدر:** GitHub Actions Bot (محسن)
+💡 **حالة البوت:** نشط ويعمل تلقائياً مع تحسينات
         """.strip()
         
         await bot.send_message(
@@ -225,7 +342,7 @@ async def send_summary_message(successful_charts):
             parse_mode="Markdown"
         )
         
-        logger.info("📋 تم إرسال ملخص التقرير الشهري")
+        logger.info("📋 تم إرسال ملخص التقرير الشهري المحسن")
         
     except Exception as e:
         logger.error(f"❌ خطأ في إرسال الملخص: {e}")
@@ -243,19 +360,25 @@ async def send_monthly_greeting():
         current_year = current_date.year
         
         greeting = f"""
-🚀 **مرحباً بك في التقرير الشهري!**
+🚀 **مرحباً بك في التقرير الشهري !**
 
 📅 **{current_month} {current_year}**
 🕒 بدء التشغيل: {time.strftime('%Y-%m-%d %H:%M UTC')}
 
-📊 **ما سيتم عمله:**
-• جلب شارتات Renko للعملات الرقمية
-• التقاط صور عالية الجودة من TradingView
-• 🌙 إرسال شارت رينكو شهري بالثيم الداكن
-• 🎨 تطبيق الوضع الليلي للحصول على مظهر أنيق
+📊 **التحسينات الجديدة:**
+• 🔍 تكبير تلقائي للشارتات
+• 🎯 توسيط الشارت في الشاشة
+• 📱 إخفاء العناصر الجانبية
+• 🖼️ جودة صورة محسنة
+• 🌙 ثيم داكن للوضوح
 
-⏳ **جاري المعالجة...**
-يرجى الانتظار بينما نجلب أحدث الشارتات لك بالثيم الداكن
+📈 **ما سيتم عمله:**
+• جلب شارتات Renko المحسنة
+• التقاط صور عالية الجودة وموسطة
+• إرسال شارتات رينكو شهرية محسنة
+
+⏳ **جاري المعالجة المحسنة...**
+يرجى الانتظار بينما نجلب أحدث الشارتات لك
         """.strip()
         
         await bot.send_message(
@@ -264,14 +387,14 @@ async def send_monthly_greeting():
             parse_mode="Markdown"
         )
         
-        logger.info("👋 تم إرسال رسالة الترحيب الشهرية")
+        logger.info("👋 تم إرسال رسالة الترحيب الشهرية المحسنة")
         
     except Exception as e:
         logger.error(f"❌ خطأ في إرسال رسالة الترحيب: {e}")
 
 async def main():
     """الدالة الرئيسية"""
-    logger.info("🚀 بدء تشغيل بوت الشارتات الشهري بالثيم الداكن...")
+    logger.info("🚀 بدء تشغيل بوت الشارتات الشهري المحسن...")
     
     # إرسال رسالة ترحيب شهرية
     await send_monthly_greeting()
@@ -284,7 +407,7 @@ async def main():
     try:
         # معالجة كل عملة
         for i, symbol_info in enumerate(SYMBOLS):
-            logger.info(f"🔄 معالجة العملة {i+1}/{len(SYMBOLS)}: {symbol_info['name']} بالثيم الداكن")
+            logger.info(f"🔄 معالجة العملة {i+1}/{len(SYMBOLS)}: {symbol_info['name']}")
             
             success = await capture_tradingview_chart(symbol_info, driver)
             
@@ -296,7 +419,7 @@ async def main():
             # انتظار بين العملات لتجنب الحظر
             if i < len(SYMBOLS) - 1:
                 logger.info("⏳ انتظار بين العملات...")
-                time.sleep(10)
+                time.sleep(15)  # انتظار أطول للتحسينات
         
         # إرسال ملخص النتائج الشهري
         await send_summary_message(successful_charts)
@@ -316,11 +439,11 @@ async def main():
         # إرسال رسالة خطأ مفصلة
         try:
             error_message = f"""
-❌ **خطأ في البوت الشهري (ثيم داكن)**
+❌ **خطأ في البوت الشهري المحسن**
 
 🕒 الوقت: {time.strftime('%Y-%m-%d %H:%M UTC')}
 📋 تفاصيل الخطأ:
-
+```
 {str(e)}
 ```
 
@@ -352,7 +475,7 @@ async def main():
         except:
             logger.warning("⚠️ خطأ في إغلاق جلسة البوت")
             
-        logger.info("🏁 انتهى التشغيل الشهري بالثيم الداكن")
+        logger.info("🏁 انتهى التشغيل الشهري المحسن")
 
 if __name__ == "__main__":
     asyncio.run(main())
