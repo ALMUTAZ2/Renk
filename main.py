@@ -41,10 +41,9 @@ def setup_chrome_driver():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--window-size=1920,1080")  # حجم شاشة كبير للشارتات
+    chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--disable-plugins")
-    # إزالة تعطيل الصور والجافاسكريبت لأننا نحتاجها للشارتات
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
     
     # إعدادات إضافية لتحسين الأداء
@@ -79,97 +78,209 @@ async def wait_for_chart_to_load(driver, max_wait=30):
         
         # انتظار عنصر الشارت الرئيسي
         chart_container = wait.until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "[data-name='legend-source-item']"))
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".chart-container"))
         )
         logger.info("📊 تم العثور على حاوية الشارت")
         
         # انتظار إضافي لتحميل البيانات
         time.sleep(10)
         
-        # التحقق من تحميل البيانات
-        try:
-            # البحث عن عناصر الشموع أو البيانات
-            candles = driver.find_elements(By.CSS_SELECTOR, "[data-name='candle']")
-            if len(candles) > 0:
-                logger.info(f"📈 تم تحميل {len(candles)} شمعة")
-            else:
-                logger.info("📊 تم تحميل الشارت (نوع آخر)")
-        except:
-            logger.info("📊 تم تحميل الشارت")
-            
         return True
         
     except Exception as e:
         logger.warning(f"⚠️ انتهت مهلة انتظار الشارت: {e}")
         return False
 
-async def maximize_and_center_chart(driver):
-    """تكبير وتوسيط الشارت"""
-    logger.info("🔍 تكبير وتوسيط الشارت...")
+async def center_and_zoom_chart_data(driver):
+    """توسيط وتكبير بيانات الشارت (الشموع)"""
+    logger.info("🎯 توسيط وتكبير بيانات الشارت...")
     
     try:
-        # محاولة إخفاء الشريط الجانبي
-        try:
-            sidebar_button = WebDriverWait(driver, 5).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='toggle-sidebar']"))
-            )
-            driver.execute_script("arguments[0].click();", sidebar_button)
-            logger.info("📱 تم إخفاء الشريط الجانبي")
-            time.sleep(2)
-        except:
-            logger.info("📱 لم يتم العثور على زر الشريط الجانبي")
+        # التركيز على منطقة الشارت
+        chart_area = driver.find_element(By.CSS_SELECTOR, ".chart-container")
+        chart_area.click()
+        time.sleep(2)
         
-        # محاولة إخفاء الشريط السفلي
-        try:
-            bottom_panel_button = WebDriverWait(driver, 5).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-name='toggle-bottom-panel']"))
-            )
-            driver.execute_script("arguments[0].click();", bottom_panel_button)
-            logger.info("📊 تم إخفاء الشريط السفلي")
-            time.sleep(2)
-        except:
-            logger.info("📊 لم يتم العثور على زر الشريط السفلي")
+        # 1. تكبير الشموع باستخدام عجلة الماوس (محاكاة)
+        logger.info("🔍 تكبير الشموع...")
+        actions = ActionChains(driver)
         
-        # تكبير الشارت باستخدام اختصارات لوحة المفاتيح
+        # تحريك الماوس لوسط الشارت
+        actions.move_to_element(chart_area).perform()
+        time.sleep(1)
+        
+        # تكبير باستخدام اختصارات لوحة المفاتيح
+        for i in range(5):  # تكبير 5 مرات
+            actions.key_down(Keys.CONTROL).send_keys('+').key_up(Keys.CONTROL).perform()
+            time.sleep(0.5)
+        
+        logger.info("✅ تم تكبير الشموع")
+        
+        # 2. توسيط البيانات باستخدام "Fit Data to Screen"
+        logger.info("🎯 توسيط البيانات في الشاشة...")
+        
         try:
-            # التركيز على منطقة الشارت
-            chart_area = driver.find_element(By.CSS_SELECTOR, ".layout__area--center")
-            chart_area.click()
+            # محاولة استخدام اختصار لوحة المفاتيح لتوسيط البيانات
+            # Ctrl+Alt+R عادة يقوم بـ Reset/Fit to screen في TradingView
+            actions.key_down(Keys.CONTROL).key_down(Keys.ALT).send_keys('r').key_up(Keys.ALT).key_up(Keys.CONTROL).perform()
+            time.sleep(2)
             
-            # استخدام اختصار التكبير
-            actions = ActionChains(driver)
-            actions.key_down(Keys.CONTROL).send_keys('+').key_up(Keys.CONTROL).perform()
+            # أو محاولة استخدام مفاتيح أخرى
+            # Home key لبداية البيانات ثم End للنهاية
+            actions.send_keys(Keys.HOME).perform()
             time.sleep(1)
-            actions.key_down(Keys.CONTROL).send_keys('+').key_up(Keys.CONTROL).perform()
+            actions.send_keys(Keys.END).perform()
             time.sleep(1)
             
-            logger.info("🔍 تم تكبير الشارت")
+            logger.info("✅ تم توسيط البيانات")
             
         except Exception as e:
-            logger.warning(f"⚠️ فشل في تكبير الشارت: {e}")
+            logger.warning(f"⚠️ فشل في توسيط البيانات تلقائياً: {e}")
         
-        # محاولة ملء الشاشة
+        # 3. محاولة استخدام أزرار TradingView للتوسيط
         try:
-            # الضغط على F11 لملء الشاشة (قد لا يعمل في headless)
-            actions = ActionChains(driver)
-            actions.send_keys(Keys.F11).perform()
-            time.sleep(2)
-            logger.info("🖥️ تم تفعيل وضع ملء الشاشة")
-        except:
-            logger.info("🖥️ لم يتم تفعيل وضع ملء الشاشة")
+            # البحث عن زر "Fit Data to Screen" أو ما شابه
+            fit_buttons = [
+                "[data-name='fit-data']",
+                "[title*='fit']",
+                "[title*='Fit']",
+                ".control-bar__btn[title*='fit']"
+            ]
+            
+            for selector in fit_buttons:
+                try:
+                    fit_button = driver.find_element(By.CSS_SELECTOR, selector)
+                    driver.execute_script("arguments[0].click();", fit_button)
+                    logger.info(f"🎯 تم النقر على زر التوسيط: {selector}")
+                    time.sleep(2)
+                    break
+                except:
+                    continue
+                    
+        except Exception as e:
+            logger.warning(f"⚠️ لم يتم العثور على زر التوسيط: {e}")
         
-        # انتظار إضافي للتأكد من التطبيق
-        time.sleep(3)
+        # 4. تعديل مقياس الوقت لإظهار المزيد من البيانات
+        try:
+            logger.info("📊 تعديل مقياس الوقت...")
+            
+            # استخدام اختصارات لتغيير الإطار الزمني
+            # الضغط على مفاتيح الأرقام لتغيير الإطار الزمني
+            actions.send_keys('4').perform()  # 4H timeframe
+            time.sleep(2)
+            actions.send_keys('D').perform()  # Daily timeframe
+            time.sleep(2)
+            
+            logger.info("✅ تم تعديل مقياس الوقت")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ فشل في تعديل مقياس الوقت: {e}")
+        
+        # 5. تحسين عرض الشموع
+        try:
+            logger.info("🕯️ تحسين عرض الشموع...")
+            
+            # محاولة تغيير نوع الشارت إذا لزم الأمر
+            # الضغط على Alt+1 للشموع اليابانية
+            actions.key_down(Keys.ALT).send_keys('1').key_up(Keys.ALT).perform()
+            time.sleep(2)
+            
+            logger.info("✅ تم تحسين عرض الشموع")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ فشل في تحسين عرض الشموع: {e}")
+        
+        # انتظار إضافي للتأكد من تطبيق جميع التغييرات
+        time.sleep(5)
         
         return True
         
     except Exception as e:
-        logger.error(f"❌ خطأ في تكبير الشارت: {e}")
+        logger.error(f"❌ خطأ في توسيط وتكبير الشارت: {e}")
+        return False
+
+async def maximize_chart_area(driver):
+    """تكبير منطقة الشارت وإخفاء العناصر غير الضرورية"""
+    logger.info("🖥️ تكبير منطقة الشارت...")
+    
+    try:
+        # إخفاء الشريط الجانبي الأيسر
+        try:
+            # محاولة عدة طرق لإخفاء الشريط الجانبي
+            sidebar_selectors = [
+                "[data-name='toggle-sidebar']",
+                ".icon-button[title*='sidebar']",
+                ".sidebar-toggle"
+            ]
+            
+            for selector in sidebar_selectors:
+                try:
+                    sidebar_button = driver.find_element(By.CSS_SELECTOR, selector)
+                    driver.execute_script("arguments[0].click();", sidebar_button)
+                    logger.info("📱 تم إخفاء الشريط الجانبي")
+                    time.sleep(2)
+                    break
+                except:
+                    continue
+        except:
+            logger.info("📱 لم يتم العثور على زر الشريط الجانبي")
+        
+        # إخفاء الشريط السفلي
+        try:
+            bottom_selectors = [
+                "[data-name='toggle-bottom-panel']",
+                ".bottom-panel-toggle",
+                ".icon-button[title*='bottom']"
+            ]
+            
+            for selector in bottom_selectors:
+                try:
+                    bottom_button = driver.find_element(By.CSS_SELECTOR, selector)
+                    driver.execute_script("arguments[0].click();", bottom_button)
+                    logger.info("📊 تم إخفاء الشريط السفلي")
+                    time.sleep(2)
+                    break
+                except:
+                    continue
+        except:
+            logger.info("📊 لم يتم العثور على زر الشريط السفلي")
+        
+        # إخفاء شريط الأدوات العلوي إن أمكن
+        try:
+            # استخدام CSS لإخفاء عناصر غير ضرورية
+            hide_elements_script = """
+            // إخفاء عناصر غير ضرورية
+            var elementsToHide = [
+                '.header-chart-panel',
+                '.chart-page-header',
+                '.top-toolbar',
+                '.chart-toolbar'
+            ];
+            
+            elementsToHide.forEach(function(selector) {
+                var elements = document.querySelectorAll(selector);
+                elements.forEach(function(el) {
+                    el.style.display = 'none';
+                });
+            });
+            """
+            
+            driver.execute_script(hide_elements_script)
+            logger.info("🎨 تم إخفاء العناصر الإضافية")
+            time.sleep(2)
+            
+        except Exception as e:
+            logger.warning(f"⚠️ فشل في إخفاء العناصر الإضافية: {e}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ خطأ في تكبير منطقة الشارت: {e}")
         return False
 
 async def capture_optimized_chart(driver, symbol):
-    """التقاط شارت محسن"""
-    logger.info(f"📸 التقاط شارت محسن لـ {symbol}...")
+    """التقاط شارت محسن ومتوسط"""
+    logger.info(f"📸 التقاط شارت محسن ومتوسط لـ {symbol}...")
     
     try:
         file_name = f"{symbol}_chart.png"
@@ -178,10 +289,11 @@ async def capture_optimized_chart(driver, symbol):
         try:
             # البحث عن منطقة الشارت الرئيسية
             chart_selectors = [
-                ".layout__area--center",
-                "[data-name='chart-container']",
                 ".chart-container",
-                ".tv-lightweight-charts"
+                ".layout__area--center", 
+                "[data-name='chart-container']",
+                ".tv-lightweight-charts",
+                ".chart-widget"
             ]
             
             chart_element = None
@@ -224,15 +336,16 @@ async def capture_optimized_chart(driver, symbol):
         return None
 
 async def capture_tradingview_chart(symbol_info, driver):
-    """التقاط شارت من TradingView مع تحسينات"""
+    """التقاط شارت من TradingView مع توسيط وتكبير الشموع"""
     symbol = symbol_info["symbol"]
     name = symbol_info["name"]
     
-    logger.info(f"📈 معالجة {name} ({symbol}) مع تحسينات...")
+    logger.info(f"📈 معالجة {name} ({symbol}) مع توسيط وتكبير الشموع...")
     
     try:
         # بناء رابط TradingView مع إعدادات محسنة
-        url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}&interval=1M&style=4&theme=dark"
+        # استخدام إطار زمني أكبر لإظهار المزيد من البيانات
+        url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}&interval=1D&style=1&theme=dark"
         
         logger.info(f"🌐 الذهاب إلى: {url}")
         driver.get(url)
@@ -242,11 +355,14 @@ async def capture_tradingview_chart(symbol_info, driver):
         if not chart_loaded:
             logger.warning(f"⚠️ قد لا يكون الشارت محمل بالكامل لـ {symbol}")
         
-        # تكبير وتوسيط الشارت
-        await maximize_and_center_chart(driver)
+        # تكبير منطقة الشارت وإخفاء العناصر غير الضرورية
+        await maximize_chart_area(driver)
         
-        # انتظار إضافي بعد التحسينات
-        time.sleep(5)
+        # توسيط وتكبير بيانات الشارت (الشموع)
+        await center_and_zoom_chart_data(driver)
+        
+        # انتظار إضافي بعد جميع التحسينات
+        time.sleep(8)
         
         # التقاط الشارت المحسن
         file_name = await capture_optimized_chart(driver, symbol)
@@ -258,7 +374,7 @@ async def capture_tradingview_chart(symbol_info, driver):
             # إرسال رسالة نصية أولاً
             await bot.send_message(
                 chat_id=TELEGRAM_CHAT_ID,
-                text=f"📊 **شارت {name} ({symbol})**\n🔗 TradingView - Renko Chart (محسن)\n📅 {time.strftime('%Y-%m-%d %H:%M UTC')}",
+                text=f"📊 **شارت {name} ({symbol})**\n🎯 شموع متوسطة ومكبرة\n📅 {time.strftime('%Y-%m-%d %H:%M UTC')}",
                 parse_mode="Markdown"
             )
             
@@ -266,12 +382,12 @@ async def capture_tradingview_chart(symbol_info, driver):
             await bot.send_photo(
                 chat_id=TELEGRAM_CHAT_ID,
                 photo=photo,
-                caption=f"📈 {name} - شارت رينكو محسن وموسط"
+                caption=f"📈 {name} - شموع متوسطة ومكبرة تلقائياً"
             )
             
             # حذف الملف
             os.remove(file_name)
-            logger.info(f"✅ تم إرسال شارت {symbol} المحسن بنجاح")
+            logger.info(f"✅ تم إرسال شارت {symbol} المتوسط والمكبر بنجاح")
             return True
             
         else:
@@ -304,7 +420,7 @@ async def send_summary_message(successful_charts):
         next_month = month_names[next_month_num]
         
         summary = f"""
-🌙 **التقرير الشهري المحسن - بوت الشارتات**
+🌙 **التقرير الشهري - شموع متوسطة ومكبرة**
 📅 الشهر: {current_month} {current_year}
 🕒 التاريخ والوقت: {time.strftime('%Y-%m-%d %H:%M UTC')}
 
@@ -312,28 +428,29 @@ async def send_summary_message(successful_charts):
 ✅ نجح: {success_count}/{total_symbols}
 ❌ فشل: {total_symbols - success_count}/{total_symbols}
 
-✅ **الشارتات المُرسلة (محسنة):**
+✅ **الشارتات المُرسلة (متوسطة ومكبرة):**
 {chr(10).join([f"• {info['name']} ({info['symbol']})" for info in successful_charts])}
 
-📈 **التحسينات المطبقة:**
-• تكبير تلقائي للشارت
-• توسيط في الشاشة
-• إخفاء العناصر الجانبية
-• جودة صورة محسنة
+🎯 **التحسينات المطبقة:**
+• 🔍 تكبير الشموع 5 مرات تلقائياً
+• 🎯 توسيط البيانات في الشاشة
+• 📊 إطار زمني يومي لوضوح أفضل
+• 🖥️ تكبير منطقة الشارت
+• 🎨 إخفاء العناصر المشتتة
 
-📊 **معلومات إضافية:**
-• نوع الشارت: Renko Charts
+📈 **معلومات إضافية:**
+• نوع الشارت: شموع يابانية
 • المصدر: TradingView
 • البورصة: Binance
-• الإطار الزمني: 1 شهر
+• الإطار الزمني: يومي
 • الثيم: داكن
 
 🔄 **الموعد القادم:** 
 📅 أول يوم من شهر {next_month} {next_year}
 🕒 الساعة 3:00 صباحاً (UTC)
 
-🤖 **المصدر:** GitHub Actions Bot (محسن)
-💡 **حالة البوت:** نشط ويعمل تلقائياً مع تحسينات
+🤖 **المصدر:** GitHub Actions Bot (شموع متوسطة)
+💡 **حالة البوت:** نشط مع توسيط وتكبير تلقائي
         """.strip()
         
         await bot.send_message(
@@ -360,25 +477,27 @@ async def send_monthly_greeting():
         current_year = current_date.year
         
         greeting = f"""
-🚀 **مرحباً بك في التقرير الشهري المحسن!**
+🚀 **مرحباً بك في التقرير الشهري - شموع متوسطة!**
 
 📅 **{current_month} {current_year}**
 🕒 بدء التشغيل: {time.strftime('%Y-%m-%d %H:%M UTC')}
 
-📊 **التحسينات الجديدة:**
-• 🔍 تكبير تلقائي للشارتات
-• 🎯 توسيط الشارت في الشاشة
-• 📱 إخفاء العناصر الجانبية
-• 🖼️ جودة صورة محسنة
-• 🌙 ثيم داكن للوضوح
+🎯 **التحسينات الجديدة للشموع:**
+• 🔍 تكبير الشموع 5 مرات تلقائياً
+• 🎯 توسيط البيانات في وسط الشاشة
+• 📊 إطار زمني يومي للوضوح
+• 🖥️ تكبير منطقة الشارت
+• 🎨 إخفاء العناصر المشتتة
+• 🌙 ثيم داكن للراحة
 
 📈 **ما سيتم عمله:**
-• جلب شارتات Renko المحسنة
-• التقاط صور عالية الجودة وموسطة
-• إرسال شارتات رينكو شهرية محسنة
+• جلب شارتات الشموع اليابانية
+• توسيط وتكبير الشموع تلقائياً
+• التقاط صور عالية الجودة ومتوسطة
+• إرسال شارتات شموع واضحة ومكبرة
 
-⏳ **جاري المعالجة المحسنة...**
-يرجى الانتظار بينما نجلب أحدث الشارتات المحسنة لك
+⏳ **جاري المعالجة مع التوسيط والتكبير...**
+يرجى الانتظار بينما نجلب أحدث الشارتات المتوسطة والمكبرة لك
         """.strip()
         
         await bot.send_message(
@@ -394,7 +513,7 @@ async def send_monthly_greeting():
 
 async def main():
     """الدالة الرئيسية"""
-    logger.info("🚀 بدء تشغيل بوت الشارتات الشهري المحسن...")
+    logger.info("🚀 بدء تشغيل بوت الشارتات الشهري - شموع متوسطة ومكبرة...")
     
     # إرسال رسالة ترحيب شهرية
     await send_monthly_greeting()
@@ -419,7 +538,7 @@ async def main():
             # انتظار بين العملات لتجنب الحظر
             if i < len(SYMBOLS) - 1:
                 logger.info("⏳ انتظار بين العملات...")
-                time.sleep(15)  # انتظار أطول للتحسينات
+                time.sleep(15)
         
         # إرسال ملخص النتائج الشهري
         await send_summary_message(successful_charts)
@@ -439,7 +558,7 @@ async def main():
         # إرسال رسالة خطأ مفصلة
         try:
             error_message = f"""
-❌ **خطأ في البوت الشهري المحسن**
+❌ **خطأ في البوت الشهري - شموع متوسطة**
 
 🕒 الوقت: {time.strftime('%Y-%m-%d %H:%M UTC')}
 📋 تفاصيل الخطأ:
@@ -474,6 +593,7 @@ async def main():
             logger.info("🔒 تم إغلاق جلسة البوت")
         except:
             logger.warning("⚠️ خطأ في إغلاق جلسة البوت")
+            
             
         logger.info("🏁 انتهى التشغيل الشهري المحسن")
 
